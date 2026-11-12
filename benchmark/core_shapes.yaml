@@ -642,3 +642,42 @@ gate_sigmoid_mul:
     - [512, 12288, contiguous]
     - [4096, 12288, split_gate]
   shape_desc: "tokens, width, gate_layout"
+
+hc_combine_norm:
+  shapes:
+    - [2, 4, 2560, 1]
+    - [1, 4, 2048, 1]
+    - [32, 4, 2048, 1]
+    - [512, 4, 2048, 1]
+    - [1, 4, 2560, 1]
+    - [32, 4, 2560, 1]
+    - [512, 4, 2560, 1]
+    - [1, 4, 2560, 0]
+    - [17, 4, 2560, 0]
+    - [2048, 4, 2560, 0]
+  shape_desc: "N, HC, H, has_logits; vLLM 0.32 upstream + synthetic coverage (BF16)"
+
+hc_gate_mix:
+  shapes:
+    - [2, 4, 2560]
+    - [1, 4, 2048]
+    - [32, 4, 2048]
+    - [512, 4, 2048]
+    - [1, 4, 2560]
+    - [32, 4, 2560]
+    - [512, 4, 2560]
+  shape_desc: "N, HC, H; upstream + synthetic decode/prefill (BF16)"
+
+hc_silu:
+  shapes:
+    - [1, 4, 320]
+    - [17, 4, 320]
+    - [32, 4, 320]
+    - [512, 4, 320]
+    - [1, 4, 2048]
+    - [32, 4, 2048]
+    - [512, 4, 2048]
+    - [1, 4, 2560]
+    - [32, 4, 2560]
+    - [512, 4, 2560]
+  shape_desc: "N, HC, DIM; vLLM 0.32 fused-reference + synthetic coverage (BF16)"

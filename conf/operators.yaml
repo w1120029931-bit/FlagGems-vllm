@@ -850,6 +850,46 @@ ops:
       - Pointwise
     stages:
       - beta: '0.3'
+  - id: hc_combine_norm
+    description: |
+      Fuse optional HC sigmoid-gated residual combination with per-branch Gemma RMSNorm,
+      preserving the residual-dtype materialization before FP32 normalization.
+    for:
+      - vllm.models.qwen4_exp.nvidia.ops.hc.hc_combine_norm
+    labels:
+      - fused
+      - vLLM
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '0.3'
+  - id: hc_gate_mix
+    description: |
+      Average sigmoid-gated HC branches in FP32 and return the input dtype.
+    for:
+      - vllm.models.qwen4_exp.nvidia.ops.hc.hc_gate_mix
+    labels:
+      - fused
+      - vLLM
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '0.3'
+  - id: hc_silu
+    description: |
+      Apply SiLU to the FP32 input divided by HC and return the input dtype.
+    for:
+      - vllm.models.qwen4_exp.nvidia.ops.hc.hc_silu
+    labels:
+      - fused
+      - vLLM
+      - Pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '0.3'
   - id: hc_head_fused_kernel
     description: |
       The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).

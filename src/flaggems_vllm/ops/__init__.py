@@ -114,6 +114,9 @@ from flaggems_vllm.ops.mhc import (
     mhc_pre,
     sinkhorn_forward,
 )
+from flaggems_vllm.ops.hc_combine_norm import hc_combine_norm
+from flaggems_vllm.ops.hc_gate_mix import hc_gate_mix
+from flaggems_vllm.ops.hc_silu import hc_silu
 from flaggems_vllm.ops.qwen4 import (
     grouped_gemma_rmsnorm,
     hc_combine,
@@ -315,6 +318,9 @@ __all__ = [
     "grouped_topk",
     "hadamard128",
     "hc_combine",
+    "hc_combine_norm",
+    "hc_gate_mix",
+    "hc_silu",
     "hc_head_fused_kernel",
     "hc_head_fused_kernel_ref",
     "ihc_post",
