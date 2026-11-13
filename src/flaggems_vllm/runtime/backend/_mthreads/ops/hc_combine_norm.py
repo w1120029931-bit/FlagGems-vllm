@@ -62,7 +62,9 @@ def hc_combine_norm(
     eps: float,
     hc_count: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    if isinstance(residual, torch.Tensor) and not residual.dtype.is_floating_point:
+    if eps < 0 or (
+        isinstance(residual, torch.Tensor) and not residual.dtype.is_floating_point
+    ):
         return _generic_hc_combine_norm(
             residual, block_output, injection_logits, norm_weight, eps, hc_count
         )

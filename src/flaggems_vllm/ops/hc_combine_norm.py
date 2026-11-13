@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Canonical HC combine and grouped RMSNorm with a portable Triton kernel."""
 
+from math import gcd
 from numbers import Integral
 
 import torch
@@ -114,12 +115,69 @@ def _prune_hc_combine_norm_configs(configs, named_args, **kwargs):
     ]
 
 
+def _native_reduction_vector(residual, block_output, norm_weight, hidden):
+    """Match native JIT alignment: runtime strides/pointers specialize at 16 only."""
+    output_alignment = 16 if residual.shape[1] % 16 == 0 else 1
+    widths = [gcd(hidden, 16 // residual.element_size(), output_alignment)]
+    for tensor, branch_stride, row_stride in (
+        (residual, hidden, residual.stride(0)),
+        (block_output, 0, block_output.stride(0)),
+        (norm_weight, 0 if norm_weight.numel() == hidden else hidden, 0),
+    ):
+        vector = 16 // tensor.element_size() if tensor.data_ptr() % 16 == 0 else 1
+        row_alignment = 16 if row_stride % 16 == 0 else 1
+        widths.append(gcd(vector, branch_stride, row_alignment))
+    return min(max(widths), 4 * triton.next_power_of_2(triton.cdiv(hidden, 512)))
+
+
+@triton.jit
+def _native_square_sum(rounded, H: tl.constexpr, VECTOR: tl.constexpr):
+    # Preserve native FP32 rounding when negative epsilon cancels the mean square.
+    TILES: tl.constexpr = triton.next_power_of_2(triton.cdiv(H, 512))
+    LANES: tl.constexpr = min(128, 512 // VECTOR)
+    LOCAL: tl.constexpr = 512 // LANES
+    WARPS: tl.constexpr = LANES // 32
+    GROUPS: tl.constexpr = max(1, VECTOR // 4)
+    lanes = tl.arange(0, LANES)
+    first = lanes * VECTOR + (1 % VECTOR) + (1 // VECTOR) * LANES * VECTOR
+    x1 = tl.gather(rounded, tl.broadcast_to(first[None, :], (TILES, LANES)), 1)
+    sums = x1 * x1
+    x0 = tl.gather(
+        rounded, tl.broadcast_to((lanes * VECTOR)[None, :], (TILES, LANES)), 1
+    )
+    sums = tl.fma(x0, x0, sums)
+    for index in tl.static_range(2, LOCAL):
+        columns = lanes * VECTOR + index % VECTOR + (index // VECTOR) * LANES * VECTOR
+        value = tl.gather(rounded, tl.broadcast_to(columns[None, :], (TILES, LANES)), 1)
+        sums = tl.fma(value, value, sums)
+    sums = tl.reshape(sums, (TILES, WARPS, 32))
+    for step in tl.static_range(5):
+        halves = tl.trans(tl.reshape(sums, (TILES, WARPS, 2, 16 >> step)), (0, 1, 3, 2))
+        low, high = tl.split(halves)
+        sums = low + high
+    sums = tl.reshape(sums, (TILES, WARPS))
+    for step in tl.static_range((2 if WARPS == 4 else 1 if WARPS == 2 else 0)):
+        halves = tl.trans(tl.reshape(sums, (TILES, 2, WARPS >> (step + 1))), (0, 2, 1))
+        low, high = tl.split(halves)
+        sums = low + high
+    sums = tl.reshape(sums, (TILES,))
+    groups = tl.arange(0, GROUPS)
+    total = tl.gather(sums, groups, axis=0)
+    for tile in tl.static_range(GROUPS, TILES, GROUPS):
+        total = total + tl.gather(sums, groups + tile, axis=0)
+    for step in tl.static_range((2 if GROUPS == 4 else 1 if GROUPS == 2 else 0)):
+        halves = tl.trans(tl.reshape(total, (2, GROUPS >> (step + 1))))
+        low, high = tl.split(halves)
+        total = low + high
+    return tl.sum(total, axis=0)
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("hc_combine_norm"),
     prune_configs_by={"early_config_prune": _prune_hc_combine_norm_configs},
-    key=["SPEC"],
-    strategy=[repr],
+    key=["SPEC", "EPS", "NATIVE_VEC"],
+    strategy=[repr, lambda eps: eps < 0, repr],
     rep=20,
     use_cuda_graph=False,
 )
@@ -133,6 +191,7 @@ def _hc_combine_norm_kernel(
     Y,
     SPEC: tl.constexpr,
     EPS: tl.constexpr,
+    NATIVE_VEC: tl.constexpr,
     BLOCK_H: tl.constexpr,
 ):
     H: tl.constexpr = SPEC[1]
@@ -142,7 +201,10 @@ def _hc_combine_norm_kernel(
     SI: tl.constexpr = SPEC[5]
     SHARED: tl.constexpr = SPEC[6]
     HAS_LOGITS: tl.constexpr = SPEC[7]
-    if O.dtype.element_ty.is_floating():
+    if EPS < 0:
+        TILE_H: tl.constexpr = 512
+        TILES: tl.constexpr = triton.next_power_of_2(triton.cdiv(H, 512))
+    elif O.dtype.element_ty.is_floating():
         TILE_H: tl.constexpr = BLOCK_H
         TILES: tl.constexpr = triton.next_power_of_2(triton.cdiv(H, TILE_H))
     else:
@@ -176,7 +238,10 @@ def _hc_combine_norm_kernel(
 
     # The materialized residual dtype is a mandatory rounding boundary.
     rounded = combined.to(tl.float32)
-    sum_sq = tl.sum(tl.sum(rounded * rounded, axis=1), axis=0)
+    if EPS < 0:
+        sum_sq = _native_square_sum(rounded, H, NATIVE_VEC)
+    else:
+        sum_sq = tl.sum(tl.sum(rounded * rounded, axis=1), axis=0)
     inverse_rms = tl.rsqrt(tl.fma(sum_sq, 1.0 / H, EPS))
     if HAS_LOGITS:
         weight = tl.load(W + weight_offsets, mask, other=0.0).to(tl.float32)
@@ -199,7 +264,7 @@ def hc_combine_norm(
     and arbitrary row strides. None logits apply the block with unit weight.
     Norm weights are contiguous, shared or per-branch, and may have any rank.
     Numeric input dtypes may differ. Both fresh outputs
-    have residual's shape, dtype and device. Epsilon may be zero or nonfinite.
+    have residual's shape, dtype and device. Epsilon may be negative, zero or nonfinite.
     This is a forward inference operation; no backward is provided.
     """
     output, normalized, spec = _prepare_hc_combine_norm(
@@ -207,6 +272,11 @@ def hc_combine_norm(
     )
     if spec[0] == 0:
         return output, normalized
+    native_vector = (
+        _native_reduction_vector(residual, block_output, norm_weight, spec[1])
+        if eps < 0
+        else 0
+    )
     with runtime.torch_device_fn.device(residual.device):
         _hc_combine_norm_kernel[(spec[0] * spec[2],)](
             residual,
@@ -217,6 +287,7 @@ def hc_combine_norm(
             normalized,
             SPEC=spec,
             EPS=eps,
+            NATIVE_VEC=native_vector,
         )
     return output, normalized
 

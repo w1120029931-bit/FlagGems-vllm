@@ -13,6 +13,9 @@ from flaggems_vllm.ops.hc_combine_norm import (
     _prepare_hc_combine_norm,
     _prune_hc_combine_norm_configs,
 )
+from flaggems_vllm.ops.hc_combine_norm import (
+    hc_combine_norm as _generic_hc_combine_norm,
+)
 from flaggems_vllm.utils import libentry, libtuner
 
 
@@ -98,6 +101,10 @@ def hc_combine_norm(
     hc_count: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Match the native interface, including the materialized rounding boundary."""
+    if eps < 0:
+        return _generic_hc_combine_norm(
+            residual, block_output, injection_logits, norm_weight, eps, hc_count
+        )
     combined, normalized, spec = _prepare_hc_combine_norm(
         residual, block_output, injection_logits, norm_weight, hc_count
     )

@@ -3,6 +3,7 @@
 """Use native vLLM when available, otherwise a test-only CPU Torch reference."""
 
 import importlib
+import math
 
 import pytest
 import torch
@@ -68,6 +69,52 @@ def _to_cpu(value):
     return value.detach().cpu()
 
 
+def _reference_sum_sq(values, residual, block, weight, hidden):
+    output_alignment = 16 if residual.shape[1] % 16 == 0 else 1
+    widths = [math.gcd(hidden, 16 // residual.element_size(), output_alignment)]
+    for tensor, branch_stride, row_stride in (
+        (residual, hidden, residual.stride(0)),
+        (block, 0, block.stride(0)),
+        (weight, 0 if weight.numel() == hidden else hidden, 0),
+    ):
+        vector = 16 // tensor.element_size() if tensor.data_ptr() % 16 == 0 else 1
+        row_alignment = 16 if row_stride % 16 == 0 else 1
+        widths.append(math.gcd(vector, branch_stride, row_alignment))
+    vector_width = min(4 * (values.shape[-1] // 512), max(widths))
+    lane_values = max(4, vector_width)
+    lanes = 512 // lane_values
+    local = torch.arange(lane_values)
+    positions = (
+        torch.arange(lanes)[:, None] * vector_width
+        + local % vector_width
+        + (local // vector_width) * (lanes * vector_width)
+    )
+    tiles = values.reshape(*values.shape[:-1], values.shape[-1] // 512, 512)
+    tiles = tiles[..., positions]
+    partial = tiles[..., 1] * tiles[..., 1]
+    for index in (0, *range(2, lane_values)):
+        value = tiles[..., index].double()
+        partial = (value * value + partial.double()).float()
+    partial = partial.reshape(*partial.shape[:-1], lanes // 32, 32)
+    for width in (16, 8, 4, 2, 1):
+        partial = partial[..., :width] + partial[..., width : 2 * width]
+    partial = partial.squeeze(-1)
+    width = partial.shape[-1] // 2
+    while width:
+        partial = partial[..., :width] + partial[..., width : 2 * width]
+        width //= 2
+    tiles = partial.squeeze(-1)
+    groups = max(1, vector_width // 4)
+    partial = tiles[..., :groups]
+    for start in range(groups, tiles.shape[-1], groups):
+        partial = partial + tiles[..., start : start + groups]
+    width = groups // 2
+    while width:
+        partial = partial[..., :width] + partial[..., width : 2 * width]
+        width //= 2
+    return partial
+
+
 def _reference(residual, block_output, injection_logits, norm_weight, eps, hc_count):
     n, width = residual.shape
     hidden = width // hc_count
@@ -86,7 +133,11 @@ def _reference(residual, block_output, injection_logits, norm_weight, eps, hc_co
         combined = (values.double() + block.double() * gate.double()).float()
     combined = _reference_cast(combined, residual.dtype)
     rounded = combined.float()
-    sum_sq = (rounded * rounded).sum(dim=-1, keepdim=True)
+    sum_sq = (
+        _reference_sum_sq(rounded, residual, block_output, norm_weight, hidden)
+        if eps < 0
+        else (rounded * rounded).sum(dim=-1, keepdim=True)
+    )
     scale = torch.tensor(1.0 / hidden, dtype=torch.float32)
     epsilon = torch.tensor(eps, dtype=torch.float32)
     # Match the native FP32 FMA after rounding both scalar operands.
@@ -275,6 +326,64 @@ def test_contiguous_weight_rank(
     case.update(weight_rank=rank, weight_dtype=weight_dtype)
     args, _ = baseline.build_inputs(case, device=gems.device)
     _check(args, implementation, reference)
+
+
+@pytest.mark.parametrize("eps", [-0.9868139028549194, -0.9868138432502747])
+def test_negative_epsilon_cancellation(eps, implementation, reference):
+    case = baseline.binding(2, 2560, "float32", hc=3, shared=True, has_logits=False)
+    case.update(eps=eps, seed=20261107)
+    args, _ = baseline.build_inputs(case, device=gems.device)
+    args[1].zero_()
+    args[3].fill_(0.25)
+    _check(args, implementation, reference)
+
+
+@pytest.mark.parametrize(
+    "hidden,dtype,layout,shared,has_logits",
+    [
+        (17, "float32", "dense", False, False),
+        (258, "float32", "dense", False, False),
+        (258, "float32", "offset2", False, False),
+        (513, "float32", "packed", False, False),
+        (2048, "float32", "offset", False, False),
+        (4097, "float32", "dense", False, False),
+        (1024, "bfloat16", "dense", True, True),
+        (2560, "float16", "dense", False, False),
+        (2560, "float64", "dense", True, True),
+        (2560, "float64", "offset4", True, True),
+    ],
+)
+@pytest.mark.parametrize("direction", [-float("inf"), float("inf")])
+def test_negative_epsilon_boundary_layout(
+    hidden, dtype, layout, shared, has_logits, direction, implementation, reference
+):
+    case = baseline.binding(
+        2,
+        hidden,
+        dtype,
+        hc=3,
+        shared=shared,
+        layout="dense" if layout.startswith("offset") else layout,
+        has_logits=has_logits,
+    )
+    case.update(seed=20261107)
+    if layout == "offset4":
+        case.update(weight_dtype="bfloat16")
+    args, _ = baseline.build_inputs(case, device=gems.device)
+    values = list(args)
+    if layout.startswith("offset"):
+        offset = int(layout.removeprefix("offset") or "1")
+        for index in (0, 1, 3):
+            tensor = values[index]
+            storage = torch.empty(
+                tensor.numel() + offset, dtype=tensor.dtype, device=tensor.device
+            )
+            values[index] = storage[offset:].view(tensor.shape).copy_(tensor)
+    values[1].zero_()
+    values[3].fill_(0.25)
+    center = -_to_cpu(values[0])[0, :hidden].float().square().mean()
+    values[4] = torch.nextafter(center, torch.tensor(direction)).item()
+    _check(tuple(values), implementation, reference)
 
 
 def test_negative_epsilon_fused_denominator(implementation, reference):
