@@ -333,3 +333,47 @@ hc_combine:
   - META: {BLOCK_D: 512, LOOP: false}
     num_warps: 4
     num_stages: 1
+
+hc_combine_norm_ascend:
+  - META:
+      BLOCK_M: 1
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_M: 2
+    num_warps: 4
+    num_stages: 1
+
+hc_combine_norm_bf16_ascend:
+  - META:
+      BLOCK_M: 8
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_M: 4
+    num_warps: 4
+    num_stages: 1
+
+hc_gate_mix_ascend:
+  - META:
+      BLOCK_M: 8
+      BLOCK_H: 512
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_M: 1
+      BLOCK_H: 256
+    num_warps: 4
+    num_stages: 1
+
+hc_silu_ascend:
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCK_M: 8
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 256
+      BLOCK_M: 1
+    num_warps: 4
+    num_stages: 1

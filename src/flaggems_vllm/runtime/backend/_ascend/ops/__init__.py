@@ -59,6 +59,9 @@ from flaggems_vllm.runtime.backend._ascend.ops.group_list_cumsum import (
 )
 from flaggems_vllm.runtime.backend._ascend.ops.grouped_topk import grouped_topk
 from flaggems_vllm.runtime.backend._ascend.ops.hc_combine import hc_combine
+from flaggems_vllm.runtime.backend._ascend.ops.hc_combine_norm import hc_combine_norm
+from flaggems_vllm.runtime.backend._ascend.ops.hc_gate_mix import hc_gate_mix
+from flaggems_vllm.runtime.backend._ascend.ops.hc_silu import hc_silu
 from flaggems_vllm.runtime.backend._ascend.ops.hyperconnection import (
     qwen4_hc_inject_combine,
 )
@@ -144,6 +147,9 @@ __all__ = [
     "group_list_cumsum",
     "grouped_topk",
     "hc_combine",
+    "hc_combine_norm",
+    "hc_gate_mix",
+    "hc_silu",
     "indexer_epilogue",
     "indexer_gemm_score",
     "indexer_k_quant_and_cache",

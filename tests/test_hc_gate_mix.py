@@ -16,6 +16,12 @@ pytestmark = pytest.mark.skipif(
     not gems.runtime.torch_device_fn.is_available(), reason="accelerator required"
 )
 _IMPLEMENTATIONS = ("generic", "hopper", "public")
+_FP8_SKIP = pytest.mark.skipif(
+    gems.vendor_name == "ascend"
+    and gems.runtime.torch_device_fn.is_available()
+    and "910B" in gems.runtime.torch_device_fn.get_device_name(gems.device).upper(),
+    reason="Ascend 910B does not support FP8",
+)
 _DTYPES = (
     "float16",
     "bfloat16",
@@ -30,8 +36,8 @@ _DTYPES = (
     "int64",
     "uint64",
     "bool",
-    "float8_e4m3fn",
-    "float8_e5m2",
+    pytest.param("float8_e4m3fn", marks=_FP8_SKIP),
+    pytest.param("float8_e5m2", marks=_FP8_SKIP),
 )
 
 
@@ -152,8 +158,8 @@ def test_native_dtypes(dtype, implementation, reference):
         ("int32", "float32"),
         ("uint64", "float32"),
         ("bool", "float32"),
-        ("float8_e4m3fn", "float16"),
-        ("float16", "float8_e5m2"),
+        pytest.param("float8_e4m3fn", "float16", marks=_FP8_SKIP),
+        pytest.param("float16", "float8_e5m2", marks=_FP8_SKIP),
     ],
 )
 def test_mixed_dtypes(x_dtype, gate_dtype, implementation, reference):
@@ -285,7 +291,13 @@ def test_native_rejected_metadata(kind, implementation, native):
 @pytest.mark.hc_gate_mix
 @pytest.mark.parametrize(
     "dtype_name",
-    ["complex64", "complex128", "float8_e4m3fnuz", "float8_e5m2fnuz", "float8_e8m0fnu"],
+    [
+        "complex64",
+        "complex128",
+        pytest.param("float8_e4m3fnuz", marks=_FP8_SKIP),
+        pytest.param("float8_e5m2fnuz", marks=_FP8_SKIP),
+        pytest.param("float8_e8m0fnu", marks=_FP8_SKIP),
+    ],
 )
 def test_other_native_dtypes(dtype_name, implementation, native):
     if not hasattr(torch, dtype_name):

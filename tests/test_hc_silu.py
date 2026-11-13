@@ -18,6 +18,12 @@ pytestmark = [
         not gems.runtime.torch_device_fn.is_available(), reason="accelerator required"
     ),
 ]
+_FP8_SKIP = pytest.mark.skipif(
+    gems.vendor_name == "ascend"
+    and gems.runtime.torch_device_fn.is_available()
+    and "910B" in gems.runtime.torch_device_fn.get_device_name(gems.device).upper(),
+    reason="Ascend 910B does not support FP8",
+)
 SUPPORTED_DTYPES = (
     "float16",
     "bfloat16",
@@ -32,8 +38,8 @@ SUPPORTED_DTYPES = (
     "int64",
     "uint64",
     "bool",
-    "float8_e4m3fn",
-    "float8_e5m2",
+    pytest.param("float8_e4m3fn", marks=_FP8_SKIP),
+    pytest.param("float8_e5m2", marks=_FP8_SKIP),
 )
 
 
@@ -218,7 +224,13 @@ def test_rejected_arguments(kind, implementation, native):
 
 @pytest.mark.parametrize(
     "dtype",
-    ("complex64", "complex128", "float8_e4m3fnuz", "float8_e5m2fnuz", "float8_e8m0fnu"),
+    [
+        "complex64",
+        "complex128",
+        pytest.param("float8_e4m3fnuz", marks=_FP8_SKIP),
+        pytest.param("float8_e5m2fnuz", marks=_FP8_SKIP),
+        pytest.param("float8_e8m0fnu", marks=_FP8_SKIP),
+    ],
 )
 @pytest.mark.parametrize("shape", ((2, 8), (0, 8), (2, 0)))
 def test_unsupported_dtypes(dtype, shape, implementation, native):

@@ -19,6 +19,12 @@ pytestmark = [
         not gems.runtime.torch_device_fn.is_available(), reason="accelerator required"
     ),
 ]
+_FP8_SKIP = pytest.mark.skipif(
+    gems.vendor_name == "ascend"
+    and gems.runtime.torch_device_fn.is_available()
+    and "910B" in gems.runtime.torch_device_fn.get_device_name(gems.device).upper(),
+    reason="Ascend 910B does not support FP8",
+)
 SUPPORTED_DTYPES = (
     "float16",
     "bfloat16",
@@ -33,8 +39,8 @@ SUPPORTED_DTYPES = (
     "int64",
     "uint64",
     "bool",
-    "float8_e4m3fn",
-    "float8_e5m2",
+    pytest.param("float8_e4m3fn", marks=_FP8_SKIP),
+    pytest.param("float8_e5m2", marks=_FP8_SKIP),
 )
 IMPLEMENTATIONS = ("generic", "hopper", "public")
 
@@ -227,7 +233,9 @@ def test_all_native_dtypes(has_logits, dtype, implementation, reference):
         ("bfloat16", "float16", "float32", "float64"),
         ("float32", "int16", "int8", "float64"),
         ("float64", "bfloat16", "float64", "float32"),
-        ("float8_e4m3fn", "float16", "float32", "float32"),
+        pytest.param(
+            ("float8_e4m3fn", "float16", "float32", "float32"), marks=_FP8_SKIP
+        ),
         ("uint64", "float32", "int16", "float32"),
         ("bool", "float32", "float32", "float32"),
     ],
@@ -527,7 +535,13 @@ def test_native_rejected_inputs(kind, implementation, native):
 
 @pytest.mark.parametrize(
     "dtype",
-    ["complex64", "complex128", "float8_e4m3fnuz", "float8_e5m2fnuz", "float8_e8m0fnu"],
+    [
+        "complex64",
+        "complex128",
+        pytest.param("float8_e4m3fnuz", marks=_FP8_SKIP),
+        pytest.param("float8_e5m2fnuz", marks=_FP8_SKIP),
+        pytest.param("float8_e8m0fnu", marks=_FP8_SKIP),
+    ],
 )
 @pytest.mark.parametrize("has_logits", [True, False])
 def test_native_unsupported_dtypes(has_logits, dtype, implementation, native):
