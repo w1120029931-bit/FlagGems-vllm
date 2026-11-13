@@ -44,6 +44,9 @@ from flaggems_vllm.runtime.backend._hygon.ops.gdn_w8a16 import quantize_gdn_stat
 from flaggems_vllm.runtime.backend._hygon.ops.gemma_rms_norm import (  # noqa: F401
     gemma_rms_norm,
 )
+from flaggems_vllm.runtime.backend._hygon.ops.hc_combine_norm import hc_combine_norm
+from flaggems_vllm.runtime.backend._hygon.ops.hc_gate_mix import hc_gate_mix
+from flaggems_vllm.runtime.backend._hygon.ops.hc_silu import hc_silu
 from flaggems_vllm.runtime.backend._hygon.ops.hyperconnection import (
     qwen4_hc_inject_combine,
 )
@@ -78,6 +81,9 @@ __all__ = [
     "gdn_w8a16",
     "gdn_w8a16_int8",
     "gemma_rms_norm",
+    "hc_combine_norm",
+    "hc_gate_mix",
+    "hc_silu",
     "inplace_fused_experts",
     "int8_einsum",
     "outplace_fused_experts",

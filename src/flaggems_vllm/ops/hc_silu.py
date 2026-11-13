@@ -73,6 +73,12 @@ def _hc_silu_kernel(
     x = tl.load(X + row * SPEC[2] + col, col < SPEC[1], other=0.0)
     scaled = x.to(tl.float32) / HC
     y = scaled * tl.sigmoid(scaled)
+    if Y.dtype.element_ty == tl.float16:
+        # Some backends fuse FP16 conversion with +0 and lose a negative zero.
+        rounded = y.to(tl.float16)
+        bits = rounded.to(tl.uint16, bitcast=True)
+        sign = ((y.to(tl.uint32, bitcast=True) >> 16) & 0x8000).to(tl.uint16)
+        y = tl.where((bits & 0x7FFF) == 0, sign, bits).to(tl.float16, bitcast=True)
     tl.store(Y + row * SPEC[1] + col, y, col < SPEC[1])
 
 

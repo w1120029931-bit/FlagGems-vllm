@@ -351,3 +351,54 @@ chunk_kda_fwd_intra_token_parallel:
       - 8
     stages:
       - 1
+
+hc_combine_norm_hygon:
+  - META: {}
+    num_warps: 1
+    num_stages: 1
+  - META: {}
+    num_warps: 2
+    num_stages: 1
+  - META: {}
+    num_warps: 4
+    num_stages: 1
+  - META: {}
+    num_warps: 8
+    num_stages: 1
+
+hc_gate_mix_hygon:
+  - META: {BLOCK_M: 1, BLOCK_H: 256}
+    num_warps: 2
+    num_stages: 1
+  - META: {BLOCK_M: 1, BLOCK_H: 512}
+    num_warps: 4
+    num_stages: 1
+  - META: {BLOCK_M: 1, BLOCK_H: 1024}
+    num_warps: 4
+    num_stages: 1
+  - META: {BLOCK_M: 2, BLOCK_H: 256}
+    num_warps: 4
+    num_stages: 1
+  - META: {BLOCK_M: 2, BLOCK_H: 512}
+    num_warps: 4
+    num_stages: 1
+  - META: {BLOCK_M: 4, BLOCK_H: 256}
+    num_warps: 4
+    num_stages: 1
+
+hc_silu_hygon:
+  - META: {BLOCK_SIZE: 256}
+    num_warps: 1
+    num_stages: 1
+  - META: {BLOCK_SIZE: 512}
+    num_warps: 2
+    num_stages: 1
+  - META: {BLOCK_SIZE: 1024}
+    num_warps: 4
+    num_stages: 1
+  - META: {BLOCK_SIZE: 2048}
+    num_warps: 4
+    num_stages: 1
+  - META: {BLOCK_SIZE: 4096}
+    num_warps: 8
+    num_stages: 1
