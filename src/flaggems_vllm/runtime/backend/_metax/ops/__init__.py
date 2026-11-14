@@ -27,6 +27,9 @@ from flaggems_vllm.runtime.backend._metax.ops.fused_recurrent import (
     fused_recurrent_gated_delta_rule_packed_decode,
 )
 from flaggems_vllm.runtime.backend._metax.ops.hc_combine import hc_combine
+from flaggems_vllm.runtime.backend._metax.ops.hc_combine_norm import hc_combine_norm
+from flaggems_vllm.runtime.backend._metax.ops.hc_gate_mix import hc_gate_mix
+from flaggems_vllm.runtime.backend._metax.ops.hc_silu import hc_silu
 from flaggems_vllm.runtime.backend._metax.ops.hyperconnection import (
     qwen4_hc_inject_combine,
 )
@@ -55,6 +58,9 @@ __all__ = [
     "fused_recurrent_gated_delta_rule_fwd",
     "fused_recurrent_gated_delta_rule_packed_decode",
     "hc_combine",
+    "hc_combine_norm",
+    "hc_gate_mix",
+    "hc_silu",
     "inplace_fused_experts",
     "int8_einsum",
     "outplace_fused_experts",

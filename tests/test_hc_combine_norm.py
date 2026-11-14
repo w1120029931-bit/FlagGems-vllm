@@ -402,9 +402,11 @@ def test_negative_epsilon_fused_denominator(implementation, reference):
     args[1].zero_()
     args[3].zero_()
     actual, _ = _check(args, implementation, reference)
-    torch.testing.assert_close(
-        actual[1], torch.full_like(actual[1], 8192.0), rtol=0, atol=0
-    )
+    if gems.vendor_name != "metax":
+        # The fixed value follows NVIDIA lowering; MetaX uses its native oracle.
+        torch.testing.assert_close(
+            actual[1], torch.full_like(actual[1], 8192.0), rtol=0, atol=0
+        )
 
 
 @pytest.mark.parametrize("eps", [0.0, -0.5, float("nan"), float("inf")])

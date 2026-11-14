@@ -7,7 +7,11 @@ import importlib
 import torch
 
 OP_NAME = "hc_combine_norm"
-NATIVE_MODULE = "vllm.models.qwen4_exp.nvidia.ops.hc"
+NATIVE_MODULE = (
+    "vllm_metax.models.qwen4_exp.metax.ops.hc"
+    if getattr(torch.version, "maca", None)
+    else "vllm.models.qwen4_exp.nvidia.ops.hc"
+)
 NATIVE_API = NATIVE_MODULE + "." + OP_NAME
 NATIVE_VERSION = None
 UPSTREAM_NONE_COMMIT = "5df63a7203cdb9328d824a27b682e77c7b9928be"
@@ -22,9 +26,8 @@ def native():
     NATIVE_VERSION = None
     NATIVE_UNAVAILABLE_REASON = None
     try:
-        import vllm
-
-        NATIVE_VERSION = getattr(vllm, "__version__", None)
+        package = importlib.import_module(NATIVE_MODULE.split(".")[0])
+        NATIVE_VERSION = getattr(package, "__version__", None)
         op = getattr(importlib.import_module(NATIVE_MODULE), OP_NAME)
     except (ImportError, AttributeError) as exc:
         NATIVE_UNAVAILABLE_REASON = repr(exc)
