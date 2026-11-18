@@ -55,6 +55,9 @@ __all__ = [
     "gdn_w8a16_int8",
     "gemma_rms_norm",
     "hc_combine",
+    "hc_combine_norm",
+    "hc_gate_mix",
+    "hc_silu",
     "indexer_k_quant_and_cache",
     "inplace_fused_experts",
     "int8_einsum",
@@ -76,6 +79,9 @@ if "mm_w8a8_int8" in vars(flag_gems):
     __all__ += ["bmm_w8a8_int8"]
 
 from flaggems_vllm.runtime.backend._thead.ops.hc_combine import hc_combine
+from flaggems_vllm.runtime.backend._thead.ops.hc_combine_norm import hc_combine_norm
+from flaggems_vllm.runtime.backend._thead.ops.hc_gate_mix import hc_gate_mix
+from flaggems_vllm.runtime.backend._thead.ops.hc_silu import hc_silu
 from flaggems_vllm.runtime.backend._thead.ops.hyperconnection import (
     qwen4_hc_inject_combine,
 )
